@@ -62,19 +62,21 @@ class ChatConsumer(AsyncWebsocketConsumer):
                     # 스트리밍 응답 처리
                     assistant_response = ''
                     async for line in resp.content:
-                        line = line.decode('utf-8').strip()
+                        line = line.decode('utf-8').strip("\n")
                         if line == 'data: [DONE]':
                             break
-                        elif line.startswith('data:'):
-                            data = line[len('data:'):].strip()
-                            if data:
-                                # 누적된 어시스턴트 응답에 추가
-                                assistant_response += data
-                                # 클라이언트로 스트리밍된 응답 전송
-                                await self.send(text_data=json.dumps({
-                                    "event": "on_parser_stream",
-                                    "output": data
-                                }))
+                        elif line.startswith('data: '):
+                            data = line[len('data: '):]
+                            if not data:
+                                data = ' '
+                            print("data: ", f"'{data}'")
+                            # 누적된 어시스턴트 응답에 추가
+                            assistant_response += data
+                            # 클라이언트로 스트리밍된 응답 전송
+                            await self.send(text_data=json.dumps({
+                                "event": "on_parser_stream",
+                                "output": data
+                            }))
                     
                     # 어시스턴트의 전체 응답을 대화 내역에 추가
                     self.history.append(("assistant", assistant_response))
