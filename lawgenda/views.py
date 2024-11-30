@@ -2,7 +2,6 @@ from channels.generic.websocket import AsyncWebsocketConsumer
 import json
 from dotenv import load_dotenv
 import aiohttp
-import asyncio
 import uuid
 
 load_dotenv('.env')
@@ -62,14 +61,13 @@ class ChatConsumer(AsyncWebsocketConsumer):
                     # 스트리밍 응답 처리
                     assistant_response = ''
                     async for line in resp.content:
-                        line = line.decode('utf-8').strip("\n")
-                        if line == 'data: [DONE]':
+                        line = line.decode('utf-8')
+                        if line == 'data: [DONE]\n':
                             break
                         elif line.startswith('data: '):
-                            data = line[len('data: '):]
+                            data = line[len('data: '):].strip("\n")
                             if not data:
-                                data = ' '
-                            print("data: ", f"'{data}'")
+                                data = '\n'
                             # 누적된 어시스턴트 응답에 추가
                             assistant_response += data
                             # 클라이언트로 스트리밍된 응답 전송
