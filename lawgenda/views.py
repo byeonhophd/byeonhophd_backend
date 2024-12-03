@@ -43,7 +43,7 @@ class ChatConsumer(AsyncWebsocketConsumer):
             # Flask API에 메시지 전송
             async with aiohttp.ClientSession() as session:
                 async with session.post(
-                    'http://127.0.0.1:5000/query',
+                    'http://127.0.0.1:5001/query',
                     json={
                         'question': message,
                         'conversation_id': conversation_id
