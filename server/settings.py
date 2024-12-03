@@ -39,6 +39,8 @@ INSTALLED_APPS = [
     'daphne',
     'corsheaders',
     'django.contrib.staticfiles',
+    'lawgenda',
+    'rest_framework',
 ]
 
 MIDDLEWARE = [

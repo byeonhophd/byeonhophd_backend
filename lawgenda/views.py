@@ -3,6 +3,12 @@ import json
 from dotenv import load_dotenv
 import aiohttp
 import uuid
+from rest_framework.views import APIView
+from rest_framework.response import Response
+from rest_framework import status
+from .models import Clause
+from .serializers import ClauseSerializer
+from django.db.models import Q
 
 load_dotenv('.env')
 
@@ -96,3 +102,17 @@ class ChatConsumer(AsyncWebsocketConsumer):
             elif role == 'assistant':
                 prompt += f"Assistant: {message}\n"
         return prompt
+
+
+class ClauseSearchView(APIView):
+
+    def get(self, request):
+        query = request.GET.get('q', '')
+        if query:
+            clauses = Clause.objects.filter(
+                Q(identifier__icontains=query) | Q(content__icontains=query)
+            )
+            serializer = ClauseSerializer(clauses, many=True)
+            return Response(serializer.data)
+        else:
+            return Response({"error": "검색어를 입력하세요."}, status=status.HTTP_400_BAD_REQUEST)
