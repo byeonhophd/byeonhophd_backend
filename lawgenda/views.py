@@ -1,16 +1,24 @@
-from channels.generic.websocket import AsyncWebsocketConsumer
-import json
-from dotenv import load_dotenv
 import aiohttp
+from dotenv import load_dotenv
+import feedparser
+import json
+import requests
 import uuid
-from rest_framework.views import APIView
-from rest_framework.response import Response
+
+from channels.generic.websocket import AsyncWebsocketConsumer
+from django.db.models import Q
+from django.views.decorators.cache import cache_page
+from django.utils.decorators import method_decorator
 from rest_framework import status
+from rest_framework.pagination import PageNumberPagination
+from rest_framework.response import Response
+from rest_framework.views import APIView
+
 from .models import Clause
 from .serializers import ClauseSerializer
-from django.db.models import Q
 
 load_dotenv('.env')
+
 
 class ChatConsumer(AsyncWebsocketConsumer):
 
@@ -105,14 +113,67 @@ class ChatConsumer(AsyncWebsocketConsumer):
 
 
 class ClauseSearchView(APIView):
-
     def get(self, request):
         query = request.GET.get('q', '')
-        if query:
-            clauses = Clause.objects.filter(
-                Q(identifier__icontains=query) | Q(content__icontains=query)
+        clauses = Clause.objects.filter(
+            Q(identifier__icontains=query) | Q(content__icontains=query)
+        ).order_by('id')  # 안정적인 정렬을 위해 order_by 추가
+
+        paginator = PageNumberPagination()
+        paginator.page_size = 10  # 페이지당 항목 수 설정 (settings.py에서 설정했다면 생략 가능)
+        result_page = paginator.paginate_queryset(clauses, request)
+        serializer = ClauseSerializer(result_page, many=True)
+        return paginator.get_paginated_response(serializer.data)
+
+
+class RssRetrieveView(APIView):
+    """
+    API 엔드포인트: RSS 피드를 가져와서 JSON 형식으로 반환합니다.
+    """
+    @method_decorator(cache_page(60*10))
+    def get(self, request):
+        rss_url = 'https://www.easylaw.go.kr/CSP/RssNewRetrieve.laf?topMenu=serviceUl7'
+        try:
+            # RSS 피드 가져오기
+            response = requests.get(rss_url, timeout=10)
+            response.raise_for_status()  # 상태 코드가 200이 아니면 예외 발생
+        except requests.RequestException as e:
+            return Response(
+                {"error": "RSS 피드 가져오기 실패", "details": str(e)},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
-            serializer = ClauseSerializer(clauses, many=True)
-            return Response(serializer.data)
-        else:
-            return Response({"error": "검색어를 입력하세요."}, status=status.HTTP_400_BAD_REQUEST)
+        
+        # RSS 피드 파싱
+        feed = feedparser.parse(response.content)
+        
+        # 피드 파싱 에러 체크
+        if feed.bozo:
+            return Response(
+                {"error": "RSS 피드 파싱 실패", "details": str(feed.bozo_exception)},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+
+        # JSON 형식으로 변환
+        rss_json = {
+            "feed": {
+                "title": feed.feed.get("title", ""),
+                "link": feed.feed.get("link", ""),
+                "description": feed.feed.get("description", ""),
+                "language": feed.feed.get("language", ""),
+                "pubDate": feed.feed.get("pubDate", ""),  # 필요 시 추가
+                # 필요에 따라 다른 피드 수준의 필드 추가
+            },
+            "items": []
+        }
+
+        for entry in feed.entries:
+            rss_json["items"].append({
+                "title": entry.get("title", "").strip(),
+                "link": entry.get("link", "").strip(),
+                "description": entry.get("description", "").strip(),
+                "pubDate": entry.get("published", "").strip(),
+                "category": entry.get("category", "").strip(),
+                # 필요에 따라 다른 아이템 수준의 필드 추가
+            })
+
+        return Response(rss_json, status=status.HTTP_200_OK)
